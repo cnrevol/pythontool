@@ -92,13 +92,15 @@ def fetch_question_data(main_index, child_index=None, library_id="042e86d045354d
         print(f"Error: Status code {response.status_code}")
         return None
 
-def extract_question_info(data, is_child=False):
+def extract_question_info(data, main_index, is_child=False, child_index=None):
     """
     Extract question information from the JSON data
     
     Args:
         data (dict): The JSON response
+        main_index (int): The main question index
         is_child (bool): Whether this is a child question
+        child_index (int, optional): The child question index
     
     Returns:
         dict: Extracted information
@@ -116,8 +118,14 @@ def extract_question_info(data, is_child=False):
         question_data = body
         parent_content = None
     
-    # Get question number
-    question_number = question_data.get("s", "Unknown")
+    # Use the main_index parameter directly instead of relying on the API response
+    question_number = main_index
+    
+    # For child questions, also store the child index
+    if is_child and child_index is not None:
+        child_number = child_index
+    else:
+        child_number = None
     
     # Get question content
     question_content = clean_html_and_encoding(question_data.get("questionContent", "Unknown"))
@@ -143,13 +151,14 @@ def extract_question_info(data, is_child=False):
     
     return {
         "question_number": question_number,
+        "child_number": child_number,
         "parent_content": parent_content,
         "question_content": question_content,
         "options": options,
         "correct_answer": correct_answer
     }
 
-def save_question_info_to_file(question_info, info_file, is_child=False, child_index=None):
+def save_question_info_to_file(question_info, info_file, is_child=False):
     """
     Append extracted question information to a single text file
     
@@ -157,17 +166,16 @@ def save_question_info_to_file(question_info, info_file, is_child=False, child_i
         question_info (dict): Extracted question information
         info_file (file): Open file handle to write to
         is_child (bool): Whether this is a child question
-        child_index (int, optional): The child question index
     """
     if question_info:
         # Write parent content for the first child question only
-        if is_child and child_index == 1 and question_info['parent_content']:
+        if is_child and question_info['child_number'] == 1 and question_info['parent_content']:
             info_file.write(f"Common Scenario:\n{question_info['parent_content']}\n\n")
             info_file.write("-" * 50 + "\n\n")
         
         # Write question number and child index if applicable
         if is_child:
-            info_file.write(f"Question Number: {question_info['question_number']} (Child {child_index})\n")
+            info_file.write(f"Question Number: {question_info['question_number']} (Child {question_info['child_number']})\n")
         else:
             info_file.write(f"Question Number: {question_info['question_number']}\n")
         
@@ -184,7 +192,7 @@ def save_question_info_to_file(question_info, info_file, is_child=False, child_i
         info_file.write(f"\nCorrect Answer: {question_info['correct_answer']}\n")
         
         # Write separator between questions
-        if is_child and child_index < MULTI_QUESTION_RANGES.get(question_info['question_number'], 0):
+        if is_child and question_info['child_number'] < MULTI_QUESTION_RANGES.get(question_info['question_number'], 0):
             info_file.write("-" * 50 + "\n\n")  # Separator between child questions
         else:
             info_file.write("=" * 50 + "\n\n")  # Separator between main questions
@@ -237,11 +245,11 @@ def main():
                 
                 if raw_json:
                     # Extract information
-                    question_info = extract_question_info(raw_json, is_child=True)
+                    question_info = extract_question_info(raw_json, main_index, is_child=True, child_index=child_index)
                     
                     # Save extracted info to text file
                     with open(multi_info_filename, "a", encoding="utf-8") as info_file:
-                        save_question_info_to_file(question_info, info_file, is_child=True, child_index=child_index)
+                        save_question_info_to_file(question_info, info_file, is_child=True)
                     
                     # Add raw JSON to dictionary
                     multi_raw_json[f"question_{main_index}"][f"child_{child_index}"] = raw_json
@@ -262,7 +270,7 @@ def main():
             
             if raw_json:
                 # Extract information
-                question_info = extract_question_info(raw_json)
+                question_info = extract_question_info(raw_json, main_index)
                 
                 # Save extracted info to text file
                 with open(single_info_filename, "a", encoding="utf-8") as info_file:
